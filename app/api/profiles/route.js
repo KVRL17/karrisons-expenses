@@ -23,7 +23,7 @@ export async function POST(request) {
     });
 
     return NextResponse.json({ profile: created, data }, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: 'Unable to add profile.' }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ error: error.message || 'Unable to add profile.' }, { status: 500 });
   }
 }

@@ -6,7 +6,7 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const amount = Number(body.amount);
-    if (!body.title?.trim() || !amount || amount <= 0 || !body.paidBy || !body.splitWith?.length) {
+    if (typeof body.title !== 'string' || !body.title.trim() || !Number.isFinite(amount) || amount <= 0 || !body.paidBy || !Array.isArray(body.splitWith) || !body.splitWith.length) {
       return NextResponse.json({ error: 'Title, amount, payer and split members are required.' }, { status: 400 });
     }
 
@@ -16,10 +16,10 @@ export async function POST(request) {
         id: crypto.randomUUID(),
         title: body.title.trim(),
         amount,
-        category: body.category || 'Other',
+        category: String(body.category || 'Other').trim().slice(0, 40) || 'Other',
         date: body.date || new Date().toISOString().slice(0, 10),
         paidBy: body.paidBy,
-        splitWith: body.splitWith,
+        splitWith: [...new Set(body.splitWith)],
         notes: String(body.notes || '').trim(),
         createdAt: new Date().toISOString()
       };
@@ -29,7 +29,7 @@ export async function POST(request) {
     });
 
     return NextResponse.json({ expense, data }, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: 'Unable to add expense.' }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ error: error.message || 'Unable to add expense.' }, { status: 500 });
   }
 }

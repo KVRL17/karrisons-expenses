@@ -7,6 +7,6 @@ export async function GET() {
   try {
     return NextResponse.json(await readDb());
   } catch (error) {
-    return NextResponse.json({ error: 'Unable to read app data.' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Unable to read app data.' }, { status: 503 });
   }
 }

@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { buildSettlements } from '@/lib/ledger';
 
-const categories = ['Groceries', 'Bills', 'Dining', 'Travel', 'Shopping', 'Medical', 'Education', 'Other'];
 const memberColors = ['#5B5BD6', '#E85AAD', '#1DAA77', '#E28B33', '#3487E8', '#8C62D8', '#DB5F5F'];
 
 const Icons = {
@@ -30,7 +30,7 @@ function Icon({ name, size = 20, stroke = 1.8 }) {
 }
 
 function currency(value) {
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value || 0);
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value || 0);
 }
 
 function initials(name = '') {
@@ -52,37 +52,10 @@ function relativeTime(date) {
   return `${days}d ago`;
 }
 
-function buildSettlements(profiles, expenses) {
-  const balances = Object.fromEntries(profiles.map((p) => [p.id, 0]));
-  for (const expense of expenses) {
-    if (!expense.splitWith?.length) continue;
-    const share = Number(expense.amount) / expense.splitWith.length;
-    if (balances[expense.paidBy] !== undefined) balances[expense.paidBy] += Number(expense.amount);
-    expense.splitWith.forEach((id) => {
-      if (balances[id] !== undefined) balances[id] -= share;
-    });
-  }
-
-  const creditors = Object.entries(balances).filter(([, amount]) => amount > 0.5).map(([id, amount]) => ({ id, amount }));
-  const debtors = Object.entries(balances).filter(([, amount]) => amount < -0.5).map(([id, amount]) => ({ id, amount: -amount }));
-  const settlements = [];
-  let i = 0;
-  let j = 0;
-  while (i < debtors.length && j < creditors.length) {
-    const amount = Math.min(debtors[i].amount, creditors[j].amount);
-    settlements.push({ from: debtors[i].id, to: creditors[j].id, amount });
-    debtors[i].amount -= amount;
-    creditors[j].amount -= amount;
-    if (debtors[i].amount < 0.5) i++;
-    if (creditors[j].amount < 0.5) j++;
-  }
-  return { balances, settlements };
-}
-
 const blankExpense = {
   title: '',
   amount: '',
-  category: 'Groceries',
+  category: '',
   date: new Date().toISOString().slice(0, 10),
   paidBy: '',
   splitWith: [],
@@ -90,8 +63,9 @@ const blankExpense = {
 };
 
 export default function Home() {
-  const [data, setData] = useState({ profiles: [], expenses: [], notifications: [] });
+  const [data, setData] = useState({ profiles: [], expenses: [], notifications: [], payments: [] });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [activeView, setActiveView] = useState('overview');
   const [expenseModal, setExpenseModal] = useState(false);
   const [memberModal, setMemberModal] = useState(false);
@@ -103,6 +77,7 @@ export default function Home() {
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [toast, setToast] = useState('');
   const [saving, setSaving] = useState(false);
+  const [paying, setPaying] = useState(false);
 
   async function load() {
     try {
@@ -110,8 +85,9 @@ export default function Home() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Could not load data.');
       setData(json);
+      setLoadError('');
     } catch (error) {
-      showToast(error.message);
+      setLoadError(error.message);
     } finally {
       setLoading(false);
     }
@@ -126,7 +102,8 @@ export default function Home() {
   }
 
   const profileMap = useMemo(() => Object.fromEntries(data.profiles.map((p) => [p.id, p])), [data.profiles]);
-  const { balances, settlements } = useMemo(() => buildSettlements(data.profiles, data.expenses), [data]);
+  const { balances, settlements } = useMemo(() => buildSettlements(data.profiles, data.expenses, data.payments), [data]);
+  const categories = useMemo(() => [...new Set(data.expenses.map((expense) => expense.category).filter(Boolean))].sort(), [data.expenses]);
 
   const totals = useMemo(() => {
     const total = data.expenses.reduce((sum, e) => sum + Number(e.amount), 0);
@@ -154,6 +131,11 @@ export default function Home() {
 
   function openAddExpense() {
     const ids = data.profiles.map((p) => p.id);
+    if (!ids.length) {
+      setActiveView('members');
+      setMemberModal(true);
+      return;
+    }
     setEditingId(null);
     setExpenseForm({ ...blankExpense, paidBy: ids[0] || '', splitWith: ids });
     setExpenseModal(true);
@@ -243,8 +225,44 @@ export default function Home() {
     } catch { /* no-op */ }
   }
 
+  async function recordPayment(item) {
+    const from = profileMap[item.from]?.name || 'This member';
+    const to = profileMap[item.to]?.name || 'the other member';
+    if (!window.confirm(`Confirm ${from} paid ${to} ${currency(item.amount)}?`)) return;
+    setPaying(true);
+    try {
+      const res = await fetch('/api/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item)
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Unable to record payment.');
+      setData(json.data);
+      showToast('Payment recorded. Balances are updated.');
+    } catch (error) { showToast(error.message); }
+    finally { setPaying(false); }
+  }
+
+  async function removePayment(id) {
+    if (!window.confirm('Remove this payment record?')) return;
+    setPaying(true);
+    try {
+      const res = await fetch(`/api/payments/${id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Unable to remove payment.');
+      setData(json.data);
+      showToast('Payment removed. Balances are updated.');
+    } catch (error) { showToast(error.message); }
+    finally { setPaying(false); }
+  }
+
   if (loading) {
     return <div className="loadingScreen"><div className="loader" /><p>Preparing your family dashboard…</p></div>;
+  }
+
+  if (loadError) {
+    return <div className="loadingScreen"><h1>Unable to open family data</h1><p>{loadError}</p><button className="primaryButton" onClick={() => { setLoading(true); load(); }}>Try again</button></div>;
   }
 
   return (
@@ -269,7 +287,7 @@ export default function Home() {
             {data.profiles.slice(0, 4).map((p) => <div key={p.id} className="stackAvatar" style={{ background: p.color }}>{initials(p.name)}</div>)}
           </div>
         </div>
-        <div className="sidebarFoot">Private family tracker<br /><span>JSON data storage</span></div>
+        <div className="sidebarFoot">Family expense tracker<br /><span>Shared JSON storage</span></div>
       </aside>
 
       <section className="content">
@@ -335,9 +353,11 @@ export default function Home() {
                       <Avatar profile={from} /><div className="settlementText"><strong>{from?.name}</strong><span>owes</span></div>
                       <div className="settlementAmount">{currency(item.amount)}</div><Icon name="arrow" size={17} />
                       <Avatar profile={to} /><strong className="toName">{to?.name}</strong>
+                      <button className="settleButton" disabled={paying} onClick={() => recordPayment(item)}>Mark paid</button>
                     </div>;
                   }) : <div className="balancedState"><span><Icon name="check" /></span><strong>All balanced</strong><p>No pending family settlements right now.</p></div>}
                 </div>
+                {data.payments.length > 0 && <div className="paymentHistory"><strong>Recent payments</strong>{data.payments.slice(0, 5).map((payment) => <div className="paymentRow" key={payment.id}><span>{profileMap[payment.from]?.name || 'Unknown'} paid {profileMap[payment.to]?.name || 'Unknown'} <b>{currency(payment.amount)}</b></span><button disabled={paying} onClick={() => removePayment(payment.id)} aria-label="Undo payment">Undo</button></div>)}</div>}
               </section>
             </div>
 
@@ -384,7 +404,7 @@ export default function Home() {
             <div className="formGrid two">
               <Field label="Expense title"><input required value={expenseForm.title} onChange={(e) => setExpenseForm({ ...expenseForm, title: e.target.value })} placeholder="e.g. Monthly groceries" /></Field>
               <Field label="Amount"><div className="moneyInput"><span>₹</span><input required type="number" min="1" step="0.01" value={expenseForm.amount} onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })} placeholder="0" /></div></Field>
-              <Field label="Category"><select value={expenseForm.category} onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })}>{categories.map((c) => <option key={c}>{c}</option>)}</select></Field>
+              <Field label="Category"><input required maxLength="40" value={expenseForm.category} onChange={(e) => setExpenseForm({ ...expenseForm, category: e.target.value })} placeholder="e.g. Groceries, school fees" list="known-categories" /><datalist id="known-categories">{categories.map((c) => <option value={c} key={c} />)}</datalist></Field>
               <Field label="Date"><input required type="date" value={expenseForm.date} onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })} /></Field>
             </div>
             <Field label="Paid by"><select required value={expenseForm.paidBy} onChange={(e) => setExpenseForm({ ...expenseForm, paidBy: e.target.value })}>{data.profiles.map((p) => <option value={p.id} key={p.id}>{p.name}</option>)}</select></Field>

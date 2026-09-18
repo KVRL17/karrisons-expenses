@@ -7,7 +7,7 @@ export async function PUT(request, { params }) {
     const { id } = await params;
     const body = await request.json();
     const amount = Number(body.amount);
-    if (!body.title?.trim() || !amount || amount <= 0 || !body.paidBy || !body.splitWith?.length) {
+    if (typeof body.title !== 'string' || !body.title.trim() || !Number.isFinite(amount) || amount <= 0 || !body.paidBy || !Array.isArray(body.splitWith) || !body.splitWith.length) {
       return NextResponse.json({ error: 'Title, amount, payer and split members are required.' }, { status: 400 });
     }
 
@@ -20,10 +20,10 @@ export async function PUT(request, { params }) {
           ...expense,
           title: body.title.trim(),
           amount,
-          category: body.category || 'Other',
+          category: String(body.category || 'Other').trim().slice(0, 40) || 'Other',
           date: body.date,
           paidBy: body.paidBy,
-          splitWith: body.splitWith,
+          splitWith: [...new Set(body.splitWith)],
           notes: String(body.notes || '').trim(),
           updatedAt: new Date().toISOString()
         };
@@ -34,8 +34,8 @@ export async function PUT(request, { params }) {
 
     if (!found) return NextResponse.json({ error: 'Expense not found.' }, { status: 404 });
     return NextResponse.json({ data });
-  } catch {
-    return NextResponse.json({ error: 'Unable to update expense.' }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ error: error.message || 'Unable to update expense.' }, { status: 500 });
   }
 }
 
@@ -53,7 +53,7 @@ export async function DELETE(_request, { params }) {
     });
     if (!deletedTitle) return NextResponse.json({ error: 'Expense not found.' }, { status: 404 });
     return NextResponse.json({ data });
-  } catch {
-    return NextResponse.json({ error: 'Unable to delete expense.' }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ error: error.message || 'Unable to delete expense.' }, { status: 500 });
   }
 }

@@ -8,7 +8,7 @@ export async function PATCH() {
       return db;
     });
     return NextResponse.json({ data });
-  } catch {
-    return NextResponse.json({ error: 'Unable to update notifications.' }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ error: error.message || 'Unable to update notifications.' }, { status: 500 });
   }
 }

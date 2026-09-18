@@ -1,19 +1,23 @@
-# Expense & Split — Karri Sons
+﻿# Expense & Split — Karri Sons
 
-A modern family expense tracker built with **Next.js (JavaScript)**. The app stores data in a local JSON file and supports family profiles, expense CRUD, equal splits, automatic settlement calculations, search/filtering, and in-app notifications.
+A mobile-friendly family expense tracker built with Next.js. Add, edit, and delete expenses; enter any category; split costs equally; and record payments when a member settles up. Balances and the payment history update immediately.
 
-## Features
+## Deploy to Vercel with JSON storage
 
-- Modern responsive dashboard
-- Add, edit and delete expenses
-- Add and remove family profiles
-- Equal expense splitting among selected members
-- Automatic **who owes whom** settlement calculation
-- Category spending insights
-- Search and filter expenses
-- In-app activity notifications
-- Local JSON persistence in `data/database.json`
-- Mobile responsive design
+Vercel deployments are read-only. `data/database.json` is the initial data bundled with the app; it **cannot be edited by a running Vercel deployment**. The deployed app writes one JSON file, `karri-sons/database.json`, to a **Private Vercel Blob** store instead. This is file/object storage, not a database. Every device using the site reads the same file.
+
+1. In the Vercel project, open **Storage** and create a **Blob** store with **Private** access.
+2. Connect the store to this project for **Production** (and Preview if you use it). Vercel adds the storage credentials automatically. Keep the store private.
+3. Redeploy the latest commit after connecting the store. The first successful edit creates `karri-sons/database.json` from `data/database.json`.
+4. Open the site on two devices and verify a newly added expense appears after refreshing the second device.
+
+If the store is missing, the app displays a setup error instead of pretending an edit was saved. Do not put a Blob token in the repository or in client-side code.
+
+**Access:** The app does not have user accounts. Anyone who can access the site can see and change the family data. Apply access protection before sharing the URL publicly.
+
+## How settlements work
+
+Each expense is split equally among the selected members. The overview shows the net payments needed to settle the family balance. Tap **Mark paid** only after the payer actually pays the recipient; this records a payment and recalculates balances. **Undo** removes a mistaken payment record. Editing or deleting an expense does not delete past payments; the balance recalculates using the remaining expenses and payments.
 
 ## Run locally
 
@@ -22,23 +26,10 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000
+Local development reads and writes `data/database.json`. Open http://localhost:3000. To test against Blob storage, deploy to Vercel with the store connected.
 
-## Production
+## Build
 
 ```bash
 npm run build
-npm start
 ```
-
-## JSON storage note
-
-This project intentionally uses `data/database.json`, as requested. This is suitable for local use or a traditional Node.js server with a persistent filesystem.
-
-If you deploy to a serverless platform such as Vercel, runtime filesystem writes are not guaranteed to persist. For permanent cloud hosting later, replace `lib/db.js` with Supabase, PostgreSQL, Firebase, or another database while keeping the existing UI and API shape.
-
-## Main data file
-
-`data/database.json`
-
-You can manually edit the profiles, expenses, and notifications in this file while the app is stopped.
