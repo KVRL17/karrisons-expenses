@@ -1,0 +1,51 @@
+{
+  "profiles": [
+    { "id": "p1", "name": "Venkatesh", "role": "Family Admin", "color": "#5B5BD6", "createdAt": "2026-09-01T08:00:00.000Z" },
+    { "id": "p2", "name": "Kusuma", "role": "Family Member", "color": "#E85AAD", "createdAt": "2026-09-01T08:01:00.000Z" },
+    { "id": "p3", "name": "Sai", "role": "Family Member", "color": "#1DAA77", "createdAt": "2026-09-01T08:02:00.000Z" }
+  ],
+  "expenses": [
+    {
+      "id": "e1",
+      "title": "Monthly Groceries",
+      "amount": 4280,
+      "category": "Groceries",
+      "date": "2026-09-15",
+      "paidBy": "p1",
+      "splitWith": ["p1", "p2", "p3"],
+      "notes": "Supermarket and vegetables",
+      "createdAt": "2026-09-15T13:20:00.000Z"
+    },
+    {
+      "id": "e2",
+      "title": "Electricity Bill",
+      "amount": 1860,
+      "category": "Bills",
+      "date": "2026-09-12",
+      "paidBy": "p2",
+      "splitWith": ["p1", "p2", "p3"],
+      "notes": "September electricity bill",
+      "createdAt": "2026-09-12T11:00:00.000Z"
+    },
+    {
+      "id": "e3",
+      "title": "Family Dinner",
+      "amount": 2250,
+      "category": "Dining",
+      "date": "2026-09-08",
+      "paidBy": "p3",
+      "splitWith": ["p1", "p2", "p3"],
+      "notes": "Weekend dinner",
+      "createdAt": "2026-09-08T15:45:00.000Z"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "n1",
+      "message": "Welcome to Expense & Split — Karri Sons.",
+      "type": "success",
+      "read": false,
+      "createdAt": "2026-09-18T08:00:00.000Z"
+    }
+  ]
+}
