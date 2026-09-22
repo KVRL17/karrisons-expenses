@@ -9,6 +9,7 @@
     "vapid": "node scripts/generate-vapid.mjs"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "2.8.0",
     "next": "15.5.24",
     "react": "19.1.1",
