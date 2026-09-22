@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
-import { updateDb } from '@/lib/db';
+import { updateDb, toPublicDb } from '@/lib/db';
 import { createNotification } from '@/lib/helpers';
+import { deliverExpenseNotifications } from '@/lib/notification-delivery';
+
+export const runtime = 'nodejs';
 
 export async function POST(request) {
   try {
@@ -24,11 +27,18 @@ export async function POST(request) {
         createdAt: new Date().toISOString()
       };
       db.expenses.unshift(expense);
-      db.notifications.unshift(createNotification(`₹${amount.toLocaleString('en-IN')} expense added: ${expense.title}.`, 'success'));
+      db.notifications.unshift(createNotification(`₹${amount.toLocaleString('en-IN')} expense added: ${expense.title}. Notifications are being sent to enabled family devices.`, 'success'));
       return db;
     });
 
-    return NextResponse.json({ expense, data }, { status: 201 });
+    let delivery = { pushSent: 0, whatsappSent: 0, results: [] };
+    try {
+      delivery = await deliverExpenseNotifications(data, expense);
+    } catch (error) {
+      delivery = { pushSent: 0, whatsappSent: 0, results: [{ ok: false, error: error.message }] };
+    }
+
+    return NextResponse.json({ expense, data: toPublicDb(data), delivery }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error.message || 'Unable to add expense.' }, { status: 500 });
   }

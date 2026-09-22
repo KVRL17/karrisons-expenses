@@ -1,0 +1,11 @@
+{
+  "id": "/",
+  "name": "Expense & Split — Karri Sons",
+  "short_name": "Karri Split",
+  "description": "Family expense tracker, split manager and settlement alerts.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f7fb",
+  "theme_color": "#111629"
+}

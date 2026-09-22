@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { updateDb } from '@/lib/db';
+import { updateDb, toPublicDb } from '@/lib/db';
 import { createNotification } from '@/lib/helpers';
 
 export async function DELETE(_request, { params }) {
@@ -15,7 +15,7 @@ export async function DELETE(_request, { params }) {
       return db;
     });
     if (!found) return NextResponse.json({ error: 'Payment not found.' }, { status: 404 });
-    return NextResponse.json({ data });
+    return NextResponse.json({ data: toPublicDb(data) });
   } catch (error) {
     return NextResponse.json({ error: error.message || 'Unable to remove payment.' }, { status: 500 });
   }

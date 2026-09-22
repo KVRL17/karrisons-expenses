@@ -2,7 +2,17 @@ import './globals.css';
 
 export const metadata = {
   title: 'Expense & Split — Karri Sons',
-  description: 'A modern family expense tracker and split manager.'
+  description: 'A modern family expense tracker and split manager.',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    title: 'Karri Split',
+    statusBarStyle: 'default'
+  }
+};
+
+export const viewport = {
+  themeColor: '#111629'
 };
 
 export default function RootLayout({ children }) {

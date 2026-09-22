@@ -42,6 +42,13 @@ function dateLabel(date) {
   return new Date(`${date}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function base64ToUint8Array(value) {
+  const padding = '='.repeat((4 - value.length % 4) % 4);
+  const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = window.atob(base64);
+  return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
+}
+
 function relativeTime(date) {
   const diff = Date.now() - new Date(date).getTime();
   const minutes = Math.max(1, Math.floor(diff / 60000));
@@ -72,7 +79,10 @@ export default function Home() {
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [expenseForm, setExpenseForm] = useState(blankExpense);
   const [editingId, setEditingId] = useState(null);
-  const [memberForm, setMemberForm] = useState({ name: '', role: 'Family Member', color: memberColors[0] });
+  const [memberForm, setMemberForm] = useState({ name: '', role: 'Family Member', color: memberColors[0], phone: '', whatsappEnabled: false });
+  const [editingMemberId, setEditingMemberId] = useState(null);
+  const [pushOwner, setPushOwner] = useState('');
+  const [pushBusy, setPushBusy] = useState('');
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [toast, setToast] = useState('');
@@ -94,6 +104,12 @@ export default function Home() {
   }
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setPushOwner(window.localStorage.getItem('karriPushProfile') || '');
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }, []);
 
   function showToast(message) {
     setToast(message);
@@ -133,7 +149,7 @@ export default function Home() {
     const ids = data.profiles.map((p) => p.id);
     if (!ids.length) {
       setActiveView('members');
-      setMemberModal(true);
+      openAddMember();
       return;
     }
     setEditingId(null);
@@ -168,7 +184,13 @@ export default function Home() {
       if (!res.ok) throw new Error(json.error || 'Unable to save expense.');
       setData(json.data);
       setExpenseModal(false);
-      showToast(editingId ? 'Expense updated successfully.' : 'Expense added successfully.');
+      if (editingId) {
+        showToast('Expense updated successfully.');
+      } else {
+        const sent = Number(json.delivery?.pushSent || 0);
+        const wa = Number(json.delivery?.whatsappSent || 0);
+        showToast(`Expense added. ${sent} push alert${sent === 1 ? '' : 's'}${wa ? ` + ${wa} WhatsApp` : ''} sent.`);
+      }
     } catch (error) {
       showToast(error.message);
     } finally {
@@ -187,23 +209,105 @@ export default function Home() {
     } catch (error) { showToast(error.message); }
   }
 
+  function openAddMember() {
+    setEditingMemberId(null);
+    setMemberForm({ name: '', role: 'Family Member', color: memberColors[(data.profiles.length + 1) % memberColors.length], phone: '', whatsappEnabled: false });
+    setMemberModal(true);
+  }
+
+  function openEditMember(profile) {
+    setEditingMemberId(profile.id);
+    setMemberForm({
+      name: profile.name || '',
+      role: profile.role || 'Family Member',
+      color: profile.color || memberColors[0],
+      phone: profile.phone || '',
+      whatsappEnabled: Boolean(profile.whatsappEnabled)
+    });
+    setMemberModal(true);
+  }
+
   async function saveMember(event) {
     event.preventDefault();
     setSaving(true);
     try {
-      const res = await fetch('/api/profiles', {
-        method: 'POST',
+      const res = await fetch(editingMemberId ? `/api/profiles/${editingMemberId}` : '/api/profiles', {
+        method: editingMemberId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(memberForm)
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Unable to add member.');
+      if (!res.ok) throw new Error(json.error || 'Unable to save member.');
       setData(json.data);
       setMemberModal(false);
-      setMemberForm({ name: '', role: 'Family Member', color: memberColors[(data.profiles.length + 1) % memberColors.length] });
-      showToast('Family member added.');
+      setEditingMemberId(null);
+      setMemberForm({ name: '', role: 'Family Member', color: memberColors[(data.profiles.length + 1) % memberColors.length], phone: '', whatsappEnabled: false });
+      showToast(editingMemberId ? 'Family member updated.' : 'Family member added.');
     } catch (error) { showToast(error.message); }
     finally { setSaving(false); }
+  }
+
+  async function enableNotifications(profileId) {
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      return showToast('This browser does not support web push notifications.');
+    }
+    setPushBusy(profileId);
+    try {
+      const configRes = await fetch('/api/push/public-key', { cache: 'no-store' });
+      const config = await configRes.json();
+      if (!config.enabled || !config.publicKey) throw new Error('Push is not configured yet. Add the VAPID keys in Vercel and redeploy.');
+
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') throw new Error('Notification permission was not granted on this device.');
+
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: base64ToUint8Array(config.publicKey)
+        });
+      }
+
+      const res = await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileId, subscription: subscription.toJSON() })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Unable to enable notifications.');
+      window.localStorage.setItem('karriPushProfile', profileId);
+      setPushOwner(profileId);
+      showToast('Automatic expense notifications enabled on this device.');
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setPushBusy('');
+    }
+  }
+
+  async function disableNotifications(profileId) {
+    setPushBusy(profileId);
+    try {
+      const registration = await navigator.serviceWorker.getRegistration('/');
+      const subscription = await registration?.pushManager.getSubscription();
+      if (subscription) {
+        await fetch('/api/push/unsubscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: subscription.endpoint })
+        });
+        await subscription.unsubscribe();
+      }
+      window.localStorage.removeItem('karriPushProfile');
+      setPushOwner('');
+      showToast('Notifications disabled on this device.');
+    } catch (error) {
+      showToast(error.message || 'Unable to disable notifications.');
+    } finally {
+      setPushBusy('');
+    }
   }
 
   async function deleteMember(id) {
@@ -381,18 +485,21 @@ export default function Home() {
 
         {activeView === 'members' && (
           <>
-            <div className="memberPageHead"><div><strong>{data.profiles.length} people</strong><span>Manage everyone included in family expenses.</span></div><button className="secondaryButton" onClick={() => setMemberModal(true)}><Icon name="plus" size={17} /> Add family member</button></div>
+            <div className="memberPageHead"><div><strong>{data.profiles.length} people</strong><span>Manage everyone included in family expenses.</span></div><button className="secondaryButton" onClick={openAddMember}><Icon name="plus" size={17} /> Add family member</button></div>
+            <div className="notificationGuide"><span className="guideIcon"><Icon name="bell" size={18} /></span><div><strong>Automatic expense alerts</strong><p>On each person&apos;s phone, open this page and tap <b>Enable alerts on this device</b> on their profile once. After that, new expenses are sent automatically.</p></div></div>
             <div className="memberGrid">
               {data.profiles.map((profile) => {
                 const paid = data.expenses.filter((e) => e.paidBy === profile.id).reduce((sum, e) => sum + Number(e.amount), 0);
                 const balance = balances[profile.id] || 0;
                 return <article className="memberCard" key={profile.id}>
-                  <div className="memberCardTop"><Avatar profile={profile} large /><button className="smallIconButton" onClick={() => deleteMember(profile.id)} title="Delete member"><Icon name="trash" size={17} /></button></div>
+                  <div className="memberCardTop"><Avatar profile={profile} large /><div className="memberCardActions"><button className="smallIconButton" onClick={() => openEditMember(profile)} title="Edit member"><Icon name="edit" size={17} /></button><button className="smallIconButton" onClick={() => deleteMember(profile.id)} title="Delete member"><Icon name="trash" size={17} /></button></div></div>
                   <h3>{profile.name}</h3><p>{profile.role}</p>
+                  <div className="memberContact"><span>{profile.phone ? `WhatsApp: ${profile.phone}` : 'WhatsApp number not added'}</span>{profile.whatsappEnabled && profile.phone && <b>WhatsApp enabled</b>}</div>
                   <div className="memberMetrics"><div><span>Total paid</span><strong>{currency(paid)}</strong></div><div><span>Net balance</span><strong className={balance >= 0 ? 'positive' : 'negative'}>{balance >= 0 ? '+' : ''}{currency(balance)}</strong></div></div>
+                  <div className="memberNotifyActions">{pushOwner === profile.id ? <button disabled={pushBusy === profile.id} className="notifyEnabled" onClick={() => disableNotifications(profile.id)}><Icon name="bell" size={15} /> Alerts enabled · Disable</button> : <button disabled={Boolean(pushBusy)} className="notifyButton" onClick={() => enableNotifications(profile.id)}><Icon name="bell" size={15} /> {pushBusy === profile.id ? 'Enabling…' : 'Enable alerts on this device'}</button>}</div>
                 </article>;
               })}
-              <button className="addMemberCard" onClick={() => setMemberModal(true)}><span><Icon name="plus" /></span><strong>Add family member</strong><p>Create another profile for splitting.</p></button>
+              <button className="addMemberCard" onClick={openAddMember}><span><Icon name="plus" /></span><strong>Add family member</strong><p>Create another profile for splitting.</p></button>
             </div>
           </>
         )}
@@ -417,12 +524,14 @@ export default function Home() {
       )}
 
       {memberModal && (
-        <Modal title="Add family member" subtitle="Create a profile so this person can be included in splits." onClose={() => setMemberModal(false)} small>
+        <Modal title={editingMemberId ? 'Edit family member' : 'Add family member'} subtitle="Add notification details so this person can receive their own expense summary." onClose={() => { setMemberModal(false); setEditingMemberId(null); }} small>
           <form onSubmit={saveMember}>
             <Field label="Full name"><input required value={memberForm.name} onChange={(e) => setMemberForm({ ...memberForm, name: e.target.value })} placeholder="Enter family member name" /></Field>
             <Field label="Role"><select value={memberForm.role} onChange={(e) => setMemberForm({ ...memberForm, role: e.target.value })}><option>Family Member</option><option>Family Admin</option><option>Parent</option><option>Son</option><option>Daughter</option></select></Field>
+            <Field label="WhatsApp number (optional)"><input inputMode="tel" value={memberForm.phone} onChange={(e) => setMemberForm({ ...memberForm, phone: e.target.value })} placeholder="e.g. +91 98765 43210" /><small className="fieldHint">Include country code. A 10-digit Indian number is automatically treated as +91.</small></Field>
+            <label className="toggleRow"><input type="checkbox" checked={memberForm.whatsappEnabled} onChange={(e) => setMemberForm({ ...memberForm, whatsappEnabled: e.target.checked })} /><span><strong>Send automatic WhatsApp updates</strong><small>Requires WhatsApp Cloud API configuration on Vercel. Browser push works independently.</small></span></label>
             <Field label="Profile color"><div className="colorChoices">{memberColors.map((color) => <button type="button" aria-label={`Choose ${color}`} key={color} onClick={() => setMemberForm({ ...memberForm, color })} className={memberForm.color === color ? 'color active' : 'color'} style={{ background: color }}>{memberForm.color === color && <Icon name="check" size={14} />}</button>)}</div></Field>
-            <div className="modalActions"><button type="button" className="ghostButton" onClick={() => setMemberModal(false)}>Cancel</button><button disabled={saving} className="primaryButton" type="submit">{saving ? 'Adding…' : 'Add member'}</button></div>
+            <div className="modalActions"><button type="button" className="ghostButton" onClick={() => { setMemberModal(false); setEditingMemberId(null); }}>Cancel</button><button disabled={saving} className="primaryButton" type="submit">{saving ? 'Saving…' : editingMemberId ? 'Save member' : 'Add member'}</button></div>
           </form>
         </Modal>
       )}

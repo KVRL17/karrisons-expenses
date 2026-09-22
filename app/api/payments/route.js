@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { updateDb } from '@/lib/db';
+import { updateDb, toPublicDb } from '@/lib/db';
 import { buildSettlements } from '@/lib/ledger';
 import { createNotification } from '@/lib/helpers';
 
@@ -21,7 +21,7 @@ export async function POST(request) {
       db.notifications.unshift(createNotification(`${from.name} paid ${to.name} ₹${amount.toLocaleString('en-IN')}.`, 'success'));
       return db;
     });
-    return NextResponse.json({ data }, { status: 201 });
+    return NextResponse.json({ data: toPublicDb(data) }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error.message || 'Unable to record payment.' }, { status: error.status || 500 });
   }

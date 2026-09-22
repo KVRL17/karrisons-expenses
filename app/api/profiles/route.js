@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
-import { updateDb } from '@/lib/db';
+import { updateDb, toPublicDb } from '@/lib/db';
 import { createNotification } from '@/lib/helpers';
+
+function cleanPhone(value) {
+  return String(value || '').replace(/[^\d+]/g, '').slice(0, 16);
+}
 
 export async function POST(request) {
   try {
@@ -15,6 +19,8 @@ export async function POST(request) {
         name,
         role: String(body.role || 'Family Member').trim() || 'Family Member',
         color: body.color || '#5B5BD6',
+        phone: cleanPhone(body.phone),
+        whatsappEnabled: Boolean(body.whatsappEnabled),
         createdAt: new Date().toISOString()
       };
       db.profiles.push(created);
@@ -22,7 +28,7 @@ export async function POST(request) {
       return db;
     });
 
-    return NextResponse.json({ profile: created, data }, { status: 201 });
+    return NextResponse.json({ profile: created, data: toPublicDb(data) }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error.message || 'Unable to add profile.' }, { status: 500 });
   }

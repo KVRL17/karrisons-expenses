@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "vapid": "node scripts/generate-vapid.mjs"
   },
   "dependencies": {
     "@vercel/blob": "2.8.0",

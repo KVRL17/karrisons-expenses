@@ -33,3 +33,13 @@ Local development reads and writes `data/database.json`. Open http://localhost:3
 ```bash
 npm run build
 ```
+
+## Automatic member notifications
+
+This version adds personalized automatic notifications whenever a **new expense** is added. Each member can receive their own share, total paid, total split/share, current balance, who they owe or should receive from, and the tracker link.
+
+- **Free browser push:** standard Web Push/VAPID; no Firebase account is required.
+- **Optional WhatsApp:** official Meta WhatsApp Cloud API using an approved utility template.
+- Family profiles now support phone number, WhatsApp opt-in, editing, and per-device push registration.
+
+See `NOTIFICATION_SETUP.md` for the exact Vercel setup and one-time device registration steps.

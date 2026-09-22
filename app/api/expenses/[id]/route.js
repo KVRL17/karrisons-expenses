@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { updateDb } from '@/lib/db';
+import { updateDb, toPublicDb } from '@/lib/db';
 import { createNotification } from '@/lib/helpers';
 
 export async function PUT(request, { params }) {
@@ -33,7 +33,7 @@ export async function PUT(request, { params }) {
     });
 
     if (!found) return NextResponse.json({ error: 'Expense not found.' }, { status: 404 });
-    return NextResponse.json({ data });
+    return NextResponse.json({ data: toPublicDb(data) });
   } catch (error) {
     return NextResponse.json({ error: error.message || 'Unable to update expense.' }, { status: 500 });
   }
@@ -52,7 +52,7 @@ export async function DELETE(_request, { params }) {
       return db;
     });
     if (!deletedTitle) return NextResponse.json({ error: 'Expense not found.' }, { status: 404 });
-    return NextResponse.json({ data });
+    return NextResponse.json({ data: toPublicDb(data) });
   } catch (error) {
     return NextResponse.json({ error: error.message || 'Unable to delete expense.' }, { status: 500 });
   }
